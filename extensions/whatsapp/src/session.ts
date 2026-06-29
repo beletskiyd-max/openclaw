@@ -65,6 +65,7 @@ export {
 export type { CredsQueueWaitResult } from "./creds-persistence.js";
 
 const LOGGED_OUT_STATUS = 401;
+const OPENCLAW_WHATSAPP_WEB_SOCKET_URL_ENV = "OPENCLAW_WHATSAPP_WEB_SOCKET_URL";
 const WHATSAPP_WEBSOCKET_PROXY_TARGET = "https://mmg.whatsapp.net/";
 const CREDS_FLUSH_TIMEOUT_MESSAGE =
   "Queued WhatsApp creds save did not finish before auth bootstrap; skipping repair and continuing with primary creds.";
@@ -125,6 +126,23 @@ async function printTerminalQr(qr: string): Promise<void> {
   process.stdout.write(output.endsWith("\n") ? output : `${output}\n`);
 }
 
+function resolveEnvWebSocketUrl(): string | undefined {
+  const value = process.env[OPENCLAW_WHATSAPP_WEB_SOCKET_URL_ENV]?.trim();
+  if (!value) {
+    return undefined;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${OPENCLAW_WHATSAPP_WEB_SOCKET_URL_ENV} must be a valid URL.`);
+  }
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    throw new Error(`${OPENCLAW_WHATSAPP_WEB_SOCKET_URL_ENV} must use ws:// or wss://.`);
+  }
+  return url.toString();
+}
+
 /**
  * Create a Baileys socket backed by the multi-file auth store we keep on disk.
  * Consumers can opt into QR printing for interactive login flows.
@@ -165,6 +183,11 @@ export async function createWaSocket(
   const { version } = await fetchLatestBaileysVersion();
   const agent = await resolveEnvProxyAgent(sessionLogger);
   const fetchAgent = await resolveEnvFetchDispatcher(sessionLogger, agent);
+  const socketOverrides: { waWebSocketUrl?: string } = {};
+  const envWebSocketUrl = resolveEnvWebSocketUrl();
+  if (envWebSocketUrl) {
+    socketOverrides.waWebSocketUrl = envWebSocketUrl;
+  }
   const socketTiming = {
     keepAliveIntervalMs:
       opts.keepAliveIntervalMs ?? DEFAULT_WHATSAPP_SOCKET_TIMING.keepAliveIntervalMs,
@@ -188,6 +211,7 @@ export async function createWaSocket(
     // Baileys types still model `fetchAgent` as a Node agent even though the
     // runtime path accepts an undici dispatcher for upload fetches.
     fetchAgent: fetchAgent as Agent | undefined,
+    ...socketOverrides,
     ...(opts.getMessage ? { getMessage: opts.getMessage } : {}),
     ...(opts.cachedGroupMetadata ? { cachedGroupMetadata: opts.cachedGroupMetadata } : {}),
   });

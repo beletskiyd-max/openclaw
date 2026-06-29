@@ -153,6 +153,7 @@ function readLastSocketOptions(): {
   fetchAgent?: unknown;
   keepAliveIntervalMs?: number;
   printQRInTerminal?: boolean;
+  waWebSocketUrl?: string;
   logger?: { level?: string; trace?: unknown };
 } {
   const [options] = firstMockCall(
@@ -169,6 +170,7 @@ function readLastSocketOptions(): {
     fetchAgent?: unknown;
     keepAliveIntervalMs?: number;
     printQRInTerminal?: boolean;
+    waWebSocketUrl?: string;
     logger?: { level?: string; trace?: unknown };
   };
 }
@@ -409,6 +411,28 @@ describe("web session", () => {
     expect(passed.keepAliveIntervalMs).toBe(10_000);
     expect(passed.connectTimeoutMs).toBe(90_000);
     expect(passed.defaultQueryTimeoutMs).toBe(120_000);
+  });
+
+  it("passes OPENCLAW_WHATSAPP_WEB_SOCKET_URL through to Baileys", async () => {
+    vi.stubEnv(
+      "OPENCLAW_WHATSAPP_WEB_SOCKET_URL",
+      " ws://127.0.0.1:14567/crabline/whatsapp/ws/chat ",
+    );
+
+    await createWaSocket(false, false);
+
+    expect(readLastSocketOptions().waWebSocketUrl).toBe(
+      "ws://127.0.0.1:14567/crabline/whatsapp/ws/chat",
+    );
+  });
+
+  it("rejects invalid OPENCLAW_WHATSAPP_WEB_SOCKET_URL values", async () => {
+    vi.stubEnv("OPENCLAW_WHATSAPP_WEB_SOCKET_URL", "http://127.0.0.1:14567/ws");
+
+    await expect(createWaSocket(false, false)).rejects.toThrow(
+      "OPENCLAW_WHATSAPP_WEB_SOCKET_URL must use ws:// or wss://.",
+    );
+    expect(baileys.makeWASocket).not.toHaveBeenCalled();
   });
 
   it("uses ambient env proxy agent when HTTPS_PROXY is configured", async () => {
